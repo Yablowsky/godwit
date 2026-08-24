@@ -1,17 +1,5 @@
 # Godwit
 
-__❗НАМ НУЖНЫ ДЕНЬГИ НА ПУБЛИКАЦИЮ В TESTFLIGHT❗__
-
-__ETH20 (USDT, USDC, ETH, etc): 0xb0292E226b140F3CC14B83777a09dF6d33Bc8613__
-
-__BTC: bc1qxj5cxnkeqj3rmhaydj8cfnz7frstl3p6dac7zw__
-
-__УЖЕ СОБРАЛИ $63/99__
-
-<img height="640" alt="Image" src="https://github.com/user-attachments/assets/3535120e-48e1-4b34-9344-a61282bfe6f1" />
-
-<img height="640" alt="Image" src="https://github.com/user-attachments/assets/a32de5b6-3921-4c59-a68d-b9f0f0dcdd7b" />
-
 macOS/iOS-клиент Godwit для olcRTC.
 
 ## Требования
