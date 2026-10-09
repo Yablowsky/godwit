@@ -89,8 +89,10 @@ strict-concurrency diagnostics, для которых уточнены Sendable-
 Workflow `.github/workflows/validate.yml` выполняет Swift tests,
 сборку Mobile.xcframework, iOS app +
 Packet Tunnel, macOS app и standalone bundle. Strict-concurrency diagnostics
-включены. Swift-предупреждения в unit tests и Xcode-сборках считаются ошибками,
-чтобы новые concurrency diagnostics не могли незаметно пройти CI.
+включены. Unit tests используют `-warnings-as-errors`; Swift-предупреждения
+в логах Xcode-сборок останавливают CI. Глобальный Xcode-флаг warnings-as-errors
+конфликтует с `-suppress-warnings` в закреплённом Tun2SocksKit, поэтому для
+Xcode проверяется лог. Новые concurrency diagnostics не должны проходить CI.
 
 На Mac дополнительно выполнить `cd apple && xcodegen generate`, проверить diff
 сгенерированного проекта, затем собрать оба приложения и extension. Здесь pin

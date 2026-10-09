@@ -58,13 +58,23 @@ jobs:
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient iOS' \
             -destination 'generic/platform=iOS' -configuration Debug \
             -derivedDataPath apple/.build/validation-ios \
-            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build \
+            | tee "$RUNNER_TEMP/godwit-ios-build.log"
+          if grep -E '\.swift:[0-9]+:[0-9]+: warning:' "$RUNNER_TEMP/godwit-ios-build.log"; then
+            echo 'Swift compiler warnings must be resolved before merging.' >&2
+            exit 1
+          fi
       - name: Build macOS application
         run: |
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient macOS' \
             -destination 'generic/platform=macOS' -configuration Debug \
             -derivedDataPath apple/.build/validation-macos \
-            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build \
+            | tee "$RUNNER_TEMP/godwit-macos-build.log"
+          if grep -E '\.swift:[0-9]+:[0-9]+: warning:' "$RUNNER_TEMP/godwit-macos-build.log"; then
+            echo 'Swift compiler warnings must be resolved before merging.' >&2
+            exit 1
+          fi
       - name: Build standalone macOS bundle
         env:
           CONFIGURATION: release
