@@ -34,20 +34,33 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
     ) {
+        let completion = TunnelCompletion<Error?>(completionHandler)
         let token: UUID
         do { token = try admission.begin() } catch {
-            completionHandler(error)
+            completion(error)
+            return
+        }
+        // Snapshot Foundation dictionaries as Swift values before crossing actors.
+        let configuration: PacketTunnelConfiguration
+        do {
+            configuration = try PacketTunnelConfiguration(
+                providerConfiguration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
+                startOptions: options
+            )
+        } catch {
+            admission.finish(token)
+            completion(error)
             return
         }
         Task { @MainActor in
             guard admission.isActive(token) else {
                 admission.finish(token)
-                completionHandler(CancellationError())
+                completion(CancellationError())
                 return
             }
             guard session == nil, shutdown == nil else {
                 admission.finish(token)
-                completionHandler(OlcRTCEngineError.invalidProfile("A tunnel session is already active or stopping."))
+                completion(OlcRTCEngineError.invalidProfile("A tunnel session is already active or stopping."))
                 return
             }
             let session = Session(id: token)
@@ -55,10 +68,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             session.startup = Task { @MainActor in
                 defer { session.startup = nil }
                 do {
-                    let configuration = try PacketTunnelConfiguration(
-                        providerConfiguration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
-                        startOptions: options
-                    )
                     try checkActive(session)
                     try await session.engine.start(options: OlcRTCStartOptions(profile: configuration.connectionProfile))
                     try checkActive(session)
@@ -71,13 +80,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                     try await startTun2Socks(configuration: configuration, session: session)
                     try checkActive(session)
                     monitor(session)
-                    completionHandler(nil)
+                    completion(nil)
                 } catch {
                     if !session.stopping {
                         // Never join this startup task from itself.
                         await beginShutdown(session, waitForStartup: false).value
                     }
-                    completionHandler(error)
+                    completion(error)
                 }
             }
         }
@@ -87,13 +96,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         with reason: NEProviderStopReason,
         completionHandler: @escaping () -> Void
     ) {
+        let completion = TunnelCompletion<Void> { _ in completionHandler() }
         let token = admission.cancelCurrent()
         Task { @MainActor in
             if let session, session.id == token {
                 await beginShutdown(session).value
             }
             // Only signal completion after the native forwarder and runtime exit.
-            completionHandler()
+            completion(())
         }
     }
 
@@ -244,6 +254,23 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
           log-level: \(debugLogging ? "debug" : "warn")
           limit-nofile: 65535
         """
+    }
+}
+
+// NetworkExtension's legacy completion may be called asynchronously. Transfer
+// sole ownership into this synchronized, one-shot holder before scheduling work.
+private final class TunnelCompletion<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var callback: ((Value) -> Void)?
+
+    init(_ callback: @escaping (Value) -> Void) { self.callback = callback }
+
+    func callAsFunction(_ value: Value) {
+        lock.lock()
+        let callback = self.callback
+        self.callback = nil
+        lock.unlock()
+        callback?(value)
     }
 }
 

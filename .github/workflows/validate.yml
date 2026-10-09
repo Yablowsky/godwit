@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: validate-${{ github.head_ref || github.ref }}
+  group: validate-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
           go-version-file: olcrtc/go.mod
           cache-dependency-path: olcrtc/go.sum
       - name: Unit tests and concurrency diagnostics
-        run: swift test --package-path apple -Xswiftc -strict-concurrency=complete
+        run: swift test --package-path apple -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
       - name: Restore pinned Mobile framework
         id: mobile-cache
         uses: actions/cache/restore@v4
@@ -58,13 +58,13 @@ jobs:
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient iOS' \
             -destination 'generic/platform=iOS' -configuration Debug \
             -derivedDataPath apple/.build/validation-ios \
-            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
       - name: Build macOS application
         run: |
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient macOS' \
             -destination 'generic/platform=macOS' -configuration Debug \
             -derivedDataPath apple/.build/validation-macos \
-            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
       - name: Build standalone macOS bundle
         env:
           CONFIGURATION: release

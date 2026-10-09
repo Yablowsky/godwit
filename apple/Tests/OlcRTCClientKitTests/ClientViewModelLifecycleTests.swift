@@ -87,9 +87,9 @@ final class ClientViewModelLifecycleTests: XCTestCase {
     func testEventStreamDoesNotRetainViewModel() async throws {
         let engine = ControlledEngine()
         var model: ClientViewModel? = makeModel(engine)
-        weak var weakModel = model
+        let weakModel = WeakReference(model!)
         model = nil
-        try await eventually { weakModel == nil }
+        try await eventually { weakModel.value == nil }
     }
 
     private func makeModel(_ engine: ControlledEngine) -> ClientViewModel {
@@ -118,6 +118,11 @@ final class ClientViewModelLifecycleTests: XCTestCase {
     }
 
     private struct TestTimeout: Error {}
+
+    private final class WeakReference<T: AnyObject> {
+        weak var value: T?
+        init(_ value: T) { self.value = value }
+    }
 }
 
 private actor ControlledEngine: OlcRTCEngine {

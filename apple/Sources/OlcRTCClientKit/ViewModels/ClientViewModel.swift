@@ -72,7 +72,7 @@ public final class ClientViewModel: ObservableObject {
     #if os(iOS)
     private let packetTunnelManager = PacketTunnelManager()
     private let backgroundRuntimeKeeper = BackgroundRuntimeKeeper()
-    private var foregroundObserver: NSObjectProtocol?
+    private var foregroundObserver: NotificationObservation?
     #endif
     private var eventTask: Task<Void, Never>?
     private var startTask: Task<Void, Never>?
@@ -150,7 +150,6 @@ public final class ClientViewModel: ObservableObject {
         pingTasks.values.forEach { $0.cancel() }
         subscriptionPingTasks.values.forEach { $0.cancel() }
         #if os(iOS)
-        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
         Task { @MainActor [backgroundRuntimeKeeper] in
             backgroundRuntimeKeeper.stop()
         }
@@ -1163,11 +1162,11 @@ public final class ClientViewModel: ObservableObject {
             self.runningMode = state.isRunning ? .packetTunnel : nil
             self.status = state
         }
-        foregroundObserver = NotificationCenter.default.addObserver(
+        foregroundObserver = NotificationObservation(NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.restorePacketTunnelStatus() }
-        }
+        })
         restorePacketTunnelStatus()
     }
 

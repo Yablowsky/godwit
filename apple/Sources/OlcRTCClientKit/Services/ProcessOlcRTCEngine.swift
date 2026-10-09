@@ -69,10 +69,6 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
             )
         }
 
-        withLock {
-            activePort = options.socksPort
-        }
-
         try launchProcess(options: options, supportRoot: supportRoot, cliURL: cliURL, socksPort: options.socksPort)
     }
 
@@ -126,7 +122,7 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
         }
 
         guard let task, task.isRunning else {
-            clearProcess()
+            if let task { clearProcess(matching: task) }
             return
         }
 
@@ -135,7 +131,7 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
 
         await waitForExitOrKill(task)
 
-        clearProcess()
+        clearProcess(matching: task)
     }
 
     private func validate(_ options: OlcRTCStartOptions) throws {
@@ -181,26 +177,31 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
             self?.handleTermination(process: process, status: process.terminationStatus)
         }
 
-        withLock {
-            process = task
-            outputPipe = pipe
-            outputBuffer.removeAll(keepingCapacity: true)
-            ready = false
-            stopping = false
-            portConflictDetected = false
-            activePort = socksPort
-            lastOutputLine = nil
-            removeConfigFile()
-            self.configURL = configURL
-        }
-
         emit("Launching \(cliURL.path)")
         emit("Using olcRTC config \(configURL.path)")
         emit("olcRTC profile provider=\(options.carrierName) transport=\(options.transportName)")
         do {
-            try task.run()
+            try withLock {
+                guard process == nil else {
+                    throw OlcRTCEngineError.invalidProfile("olcRTC is already running or stopping.")
+                }
+                process = task
+                outputPipe = pipe
+                outputBuffer.removeAll(keepingCapacity: true)
+                ready = false
+                stopping = false
+                portConflictDetected = false
+                activePort = socksPort
+                lastOutputLine = nil
+                removeConfigFile()
+                self.configURL = configURL
+                // Publish and launch atomically with respect to stop(): otherwise Stop
+                // can forget an unstarted Process which subsequently launches orphaned.
+                try task.run()
+            }
         } catch {
-            clearProcess()
+            clearProcess(matching: task)
+            try? FileManager.default.removeItem(at: configURL)
             throw error
         }
     }
@@ -278,6 +279,10 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
             // A delayed callback from an old Process must not clear a newer session.
             guard process === terminatedProcess else { return nil }
             let state = (wasStopping: stopping, remaining: outputBuffer)
+            if let line = String(data: outputBuffer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !line.isEmpty {
+                lastOutputLine = line
+            }
             outputBuffer.removeAll(keepingCapacity: true)
             process = nil
             outputPipe?.fileHandleForReading.readabilityHandler = nil
@@ -290,9 +295,6 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
 
         if let line = String(data: state.remaining, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !line.isEmpty {
-            withLock {
-                lastOutputLine = line
-            }
             emit(line)
         }
         if !state.wasStopping {
@@ -300,8 +302,9 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
         }
     }
 
-    private func clearProcess() {
+    private func clearProcess(matching expected: Process) {
         withLock {
+            guard process === expected else { return }
             process = nil
             outputPipe?.fileHandleForReading.readabilityHandler = nil
             outputPipe = nil
@@ -411,10 +414,10 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
         return nil
     }
 
-    private func withLock<T>(_ body: () -> T) -> T {
+    private func withLock<T>(_ body: () throws -> T) rethrows -> T {
         lock.lock()
         defer { lock.unlock() }
-        return body()
+        return try body()
     }
 }
 #endif

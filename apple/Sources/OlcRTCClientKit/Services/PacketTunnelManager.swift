@@ -28,7 +28,7 @@ public final class PacketTunnelManager {
     private let providerBundleIdentifier: String
     private let localizedDescription: String
     private var manager: NETunnelProviderManager?
-    private var statusObserver: NSObjectProtocol?
+    private var statusObserver: NotificationObservation?
     public var onStatusChange: ((ClientStatus) -> Void)?
 
     public init(
@@ -39,10 +39,6 @@ public final class PacketTunnelManager {
             ?? Bundle.main.bundleIdentifier.map { "\($0).PacketTunnel" }
             ?? "community.openlibre.olcrtc.ios.PacketTunnel"
         self.localizedDescription = localizedDescription
-    }
-
-    deinit {
-        if let statusObserver { NotificationCenter.default.removeObserver(statusObserver) }
     }
 
     public func refreshStatus() async throws {
@@ -118,13 +114,13 @@ public final class PacketTunnelManager {
     }
 
     private func observe(_ manager: NETunnelProviderManager) {
-        if let statusObserver { NotificationCenter.default.removeObserver(statusObserver) }
+        statusObserver = nil
         self.manager = manager
-        statusObserver = NotificationCenter.default.addObserver(
+        statusObserver = NotificationObservation(NotificationCenter.default.addObserver(
             forName: .NEVPNStatusDidChange, object: manager.connection, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.publishStatus() }
-        }
+        })
         publishStatus()
     }
 
@@ -225,15 +221,22 @@ public final class PacketTunnelManager {
     }
 
     private static func loadAllManagers() async throws -> [NETunnelProviderManager] {
-        try await withCheckedThrowingContinuation { continuation in
+        // Transfer the result of Apple's legacy callback once. From this point
+        // onward only MainActor accesses these managers.
+        let loaded: LoadedManagers = try await withCheckedThrowingContinuation { continuation in
             NETunnelProviderManager.loadAllFromPreferences { managers, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
                 }
-                continuation.resume(returning: managers ?? [])
+                continuation.resume(returning: LoadedManagers(values: managers ?? []))
             }
         }
+        return loaded.values
+    }
+
+    private struct LoadedManagers: @unchecked Sendable {
+        let values: [NETunnelProviderManager]
     }
 
     private func save(_ manager: NETunnelProviderManager) async throws {
