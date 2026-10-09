@@ -30,7 +30,7 @@ public enum SubscriptionFetchError: LocalizedError {
     }
 }
 
-public struct SubscriptionFetcher {
+public struct SubscriptionFetcher: Sendable {
     private let urlSession: URLSession
 
     public init(urlSession: URLSession = .shared) {
@@ -184,7 +184,8 @@ private struct DNSOverHTTPSAnswer: Decodable {
     let data: String
 }
 
-private final class HTTPSResolvedEndpointRequest {
+// Mutable request state is confined to queue, including startup and cancellation.
+private final class HTTPSResolvedEndpointRequest: @unchecked Sendable {
     private let url: URL
     private let host: String
     private let port: UInt16
@@ -192,6 +193,7 @@ private final class HTTPSResolvedEndpointRequest {
     private let queue = DispatchQueue(label: "community.openlibre.olcrtc.subscription-fetch")
     private var connection: NWConnection?
     private var state: RequestState?
+    private var cancelled = false
 
     init(url: URL, host: String, port: UInt16, address: String) {
         self.url = url
@@ -203,14 +205,23 @@ private final class HTTPSResolvedEndpointRequest {
     func load() async throws -> Data {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                start(continuation: continuation)
+                queue.async { self.start(continuation: continuation) }
             }
         } onCancel: {
-            connection?.cancel()
+            queue.async {
+                self.cancelled = true
+                self.state?.finish(throwing: CancellationError())
+                self.connection?.cancel()
+            }
         }
     }
 
     private func start(continuation: CheckedContinuation<Data, Error>) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        guard !cancelled else {
+            continuation.resume(throwing: CancellationError())
+            return
+        }
         let tlsOptions = NWProtocolTLS.Options()
         sec_protocol_options_set_tls_server_name(tlsOptions.securityProtocolOptions, host)
 
@@ -368,14 +379,22 @@ private final class HTTPSResolvedEndpointRequest {
     }
 }
 
-private final class RequestState {
+// Completion and accumulated data are protected by lock. onFinish is invoked
+// by the owning request's serial queue, as are all Network.framework callbacks.
+private final class RequestState: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Data, Error>?
     private let connection: NWConnection
-    private let onFinish: () -> Void
-    private(set) var data = Data()
+    private let onFinish: @Sendable () -> Void
+    private var buffer = Data()
 
-    init(continuation: CheckedContinuation<Data, Error>, connection: NWConnection, onFinish: @escaping () -> Void) {
+    var data: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return buffer
+    }
+
+    init(continuation: CheckedContinuation<Data, Error>, connection: NWConnection, onFinish: @escaping @Sendable () -> Void) {
         self.continuation = continuation
         self.connection = connection
         self.onFinish = onFinish
@@ -383,7 +402,7 @@ private final class RequestState {
 
     func append(_ chunk: Data) {
         lock.lock()
-        data.append(chunk)
+        buffer.append(chunk)
         lock.unlock()
     }
 

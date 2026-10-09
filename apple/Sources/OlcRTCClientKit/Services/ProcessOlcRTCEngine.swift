@@ -4,7 +4,9 @@ import Darwin
 #endif
 
 #if os(macOS)
-public final class ProcessOlcRTCEngine: OlcRTCEngine {
+// Mutable process bookkeeping is protected by lock; pipe/termination callbacks
+// may arrive on Foundation queues while the coordinator awaits readiness or stop.
+public final class ProcessOlcRTCEngine: OlcRTCEngine, @unchecked Sendable {
     private let eventPair = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingNewest(300))
     private let lock = NSLock()
     private var process: Process?

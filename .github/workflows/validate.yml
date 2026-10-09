@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: validate-${{ github.ref }}
+  group: validate-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -38,8 +38,21 @@ jobs:
           cache-dependency-path: olcrtc/go.sum
       - name: Unit tests and concurrency diagnostics
         run: swift test --package-path apple -Xswiftc -strict-concurrency=complete
+      - name: Restore pinned Mobile framework
+        id: mobile-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: apple/Frameworks/Mobile.xcframework
+          key: mobile-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apple/build-versions.env', 'apple/Scripts/build-xcframework.sh', 'apple/Scripts/mobile-tools.sh', 'apple/Scripts/olcrtc-root.sh') }}
       - name: Build pinned Mobile framework
+        if: steps.mobile-cache.outputs.cache-hit != 'true'
         run: ./apple/Scripts/build-xcframework.sh --olcrtc-root "$GITHUB_WORKSPACE/olcrtc"
+      - name: Cache completed Mobile framework
+        if: steps.mobile-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: apple/Frameworks/Mobile.xcframework
+          key: ${{ steps.mobile-cache.outputs.cache-primary-key }}
       - name: Build iOS app and Packet Tunnel (unsigned)
         run: |
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient iOS' \

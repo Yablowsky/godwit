@@ -298,7 +298,7 @@ private struct ProfileSettingsScreen: View {
     private var socksPortStepperValue: Binding<Int> {
         Binding(
             get: { viewModel.draft.socksPort },
-            set: setSocksPort
+            set: { setSocksPort($0) }
         )
     }
 

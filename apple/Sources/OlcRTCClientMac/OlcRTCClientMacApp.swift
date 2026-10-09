@@ -39,6 +39,7 @@ private struct WindowInitialSizeReader: NSViewRepresentable {
         Coordinator()
     }
 
+    @MainActor
     final class Coordinator {
         private var didApplyInitialSize = false
 

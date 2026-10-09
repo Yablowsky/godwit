@@ -13,7 +13,7 @@ public enum ProfilePingState: Equatable {
     case failure(message: String)
 }
 
-public struct ProfilePingResult: Equatable {
+public struct ProfilePingResult: Equatable, Sendable {
     public var milliseconds: Int
     public var measuredAt: Date
 
@@ -23,7 +23,7 @@ public struct ProfilePingResult: Equatable {
     }
 }
 
-public protocol ProfilePinging {
+public protocol ProfilePinging: Sendable {
     func ping(profile: ConnectionProfile) async throws -> ProfilePingResult
 }
 
@@ -112,7 +112,7 @@ public struct ProfilePinger: ProfilePinging {
                         options.carrierName, transportName: options.transportName,
                         roomID: options.roomID, deviceID: options.clientID, keyHex: options.keyHex,
                         socksPort: options.socksPort, timeoutMillis: timeout, pingURL: targetURL,
-                        vp8FPS: options.vp8FPS, vp8BatchSize: options.vp8BatchSize, ret0: &result
+                        vp8FPS: options.vp8FPS, vp8BatchSize: options.vp8BatchSize, ret0_: &result
                     )
                     continuation.resume(returning: result)
                 } catch {
