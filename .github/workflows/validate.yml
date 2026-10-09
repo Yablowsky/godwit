@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: validate-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
@@ -58,7 +62,7 @@ jobs:
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient iOS' \
             -destination 'generic/platform=iOS' -configuration Debug \
             -derivedDataPath apple/.build/validation-ios \
-            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build \
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build 2>&1 \
             | tee "$RUNNER_TEMP/godwit-ios-build.log"
           if grep -E '\.swift:[0-9]+:[0-9]+: warning:' "$RUNNER_TEMP/godwit-ios-build.log"; then
             echo 'Swift compiler warnings must be resolved before merging.' >&2
@@ -69,7 +73,7 @@ jobs:
           xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient macOS' \
             -destination 'generic/platform=macOS' -configuration Debug \
             -derivedDataPath apple/.build/validation-macos \
-            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build \
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build 2>&1 \
             | tee "$RUNNER_TEMP/godwit-macos-build.log"
           if grep -E '\.swift:[0-9]+:[0-9]+: warning:' "$RUNNER_TEMP/godwit-macos-build.log"; then
             echo 'Swift compiler warnings must be resolved before merging.' >&2
