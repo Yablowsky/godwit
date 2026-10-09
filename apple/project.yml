@@ -13,7 +13,7 @@ packages:
     path: .
   Tun2SocksKit:
     url: https://github.com/EbrahimTahernejad/Tun2SocksKit.git
-    branch: main
+    revision: e521c1d4507a077d770c7244b0b0fb97146bb794
 targets:
   OlcRTCClient iOS:
     type: application

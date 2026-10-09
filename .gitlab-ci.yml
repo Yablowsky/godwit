@@ -25,8 +25,6 @@ mobile:testflight:
     - cd apple
     - plutil -p Sources/OlcRTCClientiOS/Info.plist | grep UISupportedInterfaceOrientations
     - cd ..
-    - if ! command -v gomobile >/dev/null 2>&1; then go install golang.org/x/mobile/cmd/gomobile@latest; fi
-    - gomobile init
     - ./apple/Scripts/build-xcframework.sh
     - bundle exec fastlane ios ci_testflight
 
@@ -38,8 +36,6 @@ olcrtc:ios:simulator:
   script:
     - export PATH="$HOME/Documents/golang/bin:/opt/homebrew/opt/go/libexec/bin:$PATH"
     - go version
-    - if ! command -v gomobile >/dev/null 2>&1; then go install golang.org/x/mobile/cmd/gomobile@latest; fi
-    - gomobile init
     - ./apple/Scripts/build-xcframework.sh
     - xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Debug -destination "generic/platform=iOS Simulator" build
 
@@ -51,7 +47,5 @@ olcrtc:ios:device-compile:
   script:
     - export PATH="$HOME/Documents/golang/bin:/opt/homebrew/opt/go/libexec/bin:$PATH"
     - go version
-    - if ! command -v gomobile >/dev/null 2>&1; then go install golang.org/x/mobile/cmd/gomobile@latest; fi
-    - gomobile init
     - ./apple/Scripts/build-xcframework.sh
     - xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Debug -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build

@@ -1,5 +1,29 @@
 # Разработка
 
+## Закреплённое ядро и проверка изменений
+
+Версии ядра, Go/gomobile и Xcode CI находятся в `apple/build-versions.env`.
+Скрипты отклоняют другой SHA ядра и checkout с локальными изменениями.
+Используйте отдельную чистую копию olcrtc, не каталог работающего сервера:
+
+```bash
+source apple/build-versions.env
+git clone https://github.com/openlibrecommunity/olcrtc.git ../olcrtc-godwit
+git -C ../olcrtc-godwit switch --detach "$OLCRTC_REVISION"
+./apple/Scripts/build-xcframework.sh --olcrtc-root ../olcrtc-godwit
+swift test --package-path apple
+```
+
+Скрипт сборки framework устанавливает закреплённые gomobile и gobind в
+`apple/.build/mobile-tools/bin`. Отдельная установка `@latest` не нужна.
+Словари имён встроены в ядро; внешний `data/` больше не требуется.
+
+Границы изменений, результаты проверок и план ручной приёмки:
+[stabilization.md](stabilization.md).
+
+Не считайте успешный macOS SwiftPM test проверкой iOS: для iOS необходимо
+собрать приложение **и** Packet Tunnel с реальным Mobile.xcframework.
+
 ## Структура
 
 - `apple/Package.swift`: SwiftPM-пакет с общим кодом приложения.

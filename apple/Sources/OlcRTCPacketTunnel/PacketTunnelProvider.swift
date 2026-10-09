@@ -1,9 +1,9 @@
 import Foundation
 import NetworkExtension
 import OlcRTCClientKit
-import Tun2SocksKit
+@preconcurrency import Tun2SocksKit
 
-final class PacketTunnelProvider: NEPacketTunnelProvider {
+final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private enum Constants {
         static let tunnelAddress = "198.18.0.1"
         static let tunnelSubnetMask = "255.255.255.0"
@@ -13,27 +13,72 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         static let mtu = 8500
     }
 
-    private var engine: GomobileOlcRTCEngine?
-    private var tun2socksTask: Task<Void, Never>?
-    private var configFileURL: URL?
+    @MainActor
+    private final class Session {
+        let id: UUID
+        let engine = GomobileOlcRTCEngine()
+        var startup: Task<Void, Never>?
+        var monitor: Task<Void, Never>?
+        var forwarder: PacketTunnelForwarder?
+        var configFileURL: URL?
+        var stopping = false
+
+        init(id: UUID) { self.id = id }
+    }
+
+    private let admission = TunnelLifecycleGate()
+    @MainActor private var session: Session?
+    @MainActor private var shutdown: Task<Void, Never>?
 
     override func startTunnel(
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
     ) {
-        Task {
-            do {
-                let configuration = try PacketTunnelConfiguration(
-                    providerConfiguration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
-                    startOptions: options
-                )
-                try await startOlcRTC(configuration: configuration)
-                try await applyNetworkSettings()
-                try await startTun2Socks(configuration: configuration)
-                completionHandler(nil)
-            } catch {
-                completionHandler(error)
-                await stopRuntime()
+        let token: UUID
+        do { token = try admission.begin() } catch {
+            completionHandler(error)
+            return
+        }
+        Task { @MainActor in
+            guard admission.isActive(token) else {
+                admission.finish(token)
+                completionHandler(CancellationError())
+                return
+            }
+            guard session == nil, shutdown == nil else {
+                admission.finish(token)
+                completionHandler(OlcRTCEngineError.invalidProfile("A tunnel session is already active or stopping."))
+                return
+            }
+            let session = Session(id: token)
+            self.session = session
+            session.startup = Task { @MainActor in
+                defer { session.startup = nil }
+                do {
+                    let configuration = try PacketTunnelConfiguration(
+                        providerConfiguration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
+                        startOptions: options
+                    )
+                    try checkActive(session)
+                    try await session.engine.start(options: OlcRTCStartOptions(profile: configuration.connectionProfile))
+                    try checkActive(session)
+                    try await session.engine.waitReady(timeoutMillis: max(
+                        configuration.startTimeoutMillis, ConnectionProfile.defaultStartTimeoutMillis
+                    ))
+                    try checkActive(session)
+                    try await applyNetworkSettings()
+                    try checkActive(session)
+                    try await startTun2Socks(configuration: configuration, session: session)
+                    try checkActive(session)
+                    monitor(session)
+                    completionHandler(nil)
+                } catch {
+                    if !session.stopping {
+                        // Never join this startup task from itself.
+                        await beginShutdown(session, waitForStartup: false).value
+                    }
+                    completionHandler(error)
+                }
             }
         }
     }
@@ -42,27 +87,24 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         with reason: NEProviderStopReason,
         completionHandler: @escaping () -> Void
     ) {
-        Task {
-            await stopRuntime()
+        let token = admission.cancelCurrent()
+        Task { @MainActor in
+            if let session, session.id == token {
+                await beginShutdown(session).value
+            }
+            // Only signal completion after the native forwarder and runtime exit.
             completionHandler()
         }
     }
 
-    private func startOlcRTC(configuration: PacketTunnelConfiguration) async throws {
-        let profile = configuration.connectionProfile
-        let startOptions = OlcRTCStartOptions(profile: profile)
-        let engine = GomobileOlcRTCEngine()
-        self.engine = engine
-
-        try await engine.start(options: startOptions)
-        try await engine.waitReady(
-            timeoutMillis: max(
-                configuration.startTimeoutMillis,
-                ConnectionProfile.defaultStartTimeoutMillis
-            )
-        )
+    @MainActor
+    private func checkActive(_ session: Session) throws {
+        try Task.checkCancellation()
+        guard self.session === session, !session.stopping,
+              admission.isActive(session.id) else { throw CancellationError() }
     }
 
+    @MainActor
     private func applyNetworkSettings() async throws {
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: Constants.tunnelAddress)
         settings.mtu = Constants.mtu as NSNumber
@@ -92,33 +134,86 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
-    private func startTun2Socks(configuration: PacketTunnelConfiguration) async throws {
-        let socksPort = await engine?.activeSocksPort ?? configuration.socksPort
+    @MainActor
+    private func startTun2Socks(configuration: PacketTunnelConfiguration, session: Session) async throws {
+        let socksPort = await session.engine.activeSocksPort ?? configuration.socksPort
+        try checkActive(session)
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("olcrtc-tun2socks.yml")
+            .appendingPathComponent("olcrtc-tun2socks-\(UUID().uuidString).yml")
         try tun2socksConfiguration(
             socksPort: socksPort,
             debugLogging: configuration.debugLogging
         ).write(to: fileURL, atomically: true, encoding: .utf8)
-        configFileURL = fileURL
+        session.configFileURL = fileURL
+        let forwarder = PacketTunnelForwarder()
+        session.forwarder = forwarder
+        forwarder.start(fileURL: fileURL)
+    }
 
-        tun2socksTask = Task.detached(priority: .userInitiated) {
-            _ = Socks5Tunnel.run(withConfig: .file(path: fileURL))
+    @MainActor
+    private func beginShutdown(_ session: Session, waitForStartup: Bool = true) -> Task<Void, Never> {
+        if let shutdown { return shutdown }
+        admission.cancel(session.id)
+        session.stopping = true
+        session.startup?.cancel()
+        session.monitor?.cancel()
+        let startup = waitForStartup ? session.startup : nil
+        let task = Task { @MainActor in
+            // Break a blocking WaitReady before joining startup.
+            await session.engine.stop()
+            await startup?.value
+            if let forwarder = session.forwarder {
+                repeat {
+                    forwarder.requestStop()
+                    if forwarder.exitCode != nil { break }
+                    await pauseDuringShutdown()
+                } while true
+                session.forwarder = nil
+            }
+            // A Go shutdown timeout is not proof that the runtime has exited.
+            // Keep the session owned; NetworkExtension controls the final OS deadline.
+            repeat {
+                await session.engine.stop()
+                if !(await session.engine.isRunning) { break }
+                await pauseDuringShutdown()
+            } while true
+            if let fileURL = session.configFileURL {
+                try? FileManager.default.removeItem(at: fileURL)
+                session.configFileURL = nil
+            }
+            if self.session === session { self.session = nil }
+            self.shutdown = nil
+            self.admission.finish(session.id)
+        }
+        shutdown = task
+        return task
+    }
+
+    @MainActor
+    private func monitor(_ session: Session) {
+        session.monitor = Task { @MainActor [weak self, weak session] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                guard let self, let session, self.session === session, !session.stopping else { return }
+                let runtimeRunning = await session.engine.isRunning
+                guard !Task.isCancelled, !session.stopping else { return }
+                if !runtimeRunning || session.forwarder?.exitCode != nil {
+                    let error = OlcRTCEngineError.invalidProfile("The tunnel runtime or packet forwarder exited unexpectedly.")
+                    await self.beginShutdown(session).value
+                    self.cancelTunnelWithError(error)
+                    return
+                }
+            }
         }
     }
 
-    private func stopRuntime() async {
-        tun2socksTask?.cancel()
-        tun2socksTask = nil
-        Socks5Tunnel.quit()
-
-        if let configFileURL {
-            try? FileManager.default.removeItem(at: configFileURL)
-            self.configFileURL = nil
+    private func pauseDuringShutdown() async {
+        // Cleanup must keep waiting even if the startup task that requested it was cancelled.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(100)) {
+                continuation.resume()
+            }
         }
-
-        await engine?.stop()
-        engine = nil
     }
 
     private func tun2socksConfiguration(
@@ -149,5 +244,39 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
           log-level: \(debugLogging ? "debug" : "warn")
           limit-nofile: 65535
         """
+    }
+}
+
+// The C forwarder is blocking and has no Swift cancellation support. The lock
+// protects only Swift bookkeeping, never the blocking native run() call.
+private final class PacketTunnelForwarder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stopping = false
+    private var result: Int32?
+
+    var exitCode: Int32? { withLock { result } }
+
+    func start(fileURL: URL) {
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let shouldRun = withLock {
+                if stopping { result = 0; return false }
+                return true
+            }
+            guard shouldRun else { return }
+            let code = Socks5Tunnel.run(withConfig: .file(path: fileURL))
+            withLock { result = code }
+        }
+    }
+
+    func requestStop() {
+        let needsStop = withLock { stopping = true; return result == nil }
+        // Repeated by cleanup: a quit issued before native initialization can be lost.
+        if needsStop { Socks5Tunnel.quit() }
+    }
+
+    private func withLock<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
     }
 }

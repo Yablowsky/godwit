@@ -7,6 +7,7 @@ public enum PacketTunnelManagerError: LocalizedError {
     case providerBundleIdentifierMissing
     case providerDisconnected
     case startTimedOut
+    case alreadyActive
 
     public var errorDescription: String? {
         switch self {
@@ -16,13 +17,19 @@ public enum PacketTunnelManagerError: LocalizedError {
             "The iOS VPN tunnel stopped before it reported a connection."
         case .startTimedOut:
             "Timed out while waiting for the iOS VPN tunnel to connect."
+        case .alreadyActive:
+            "The iOS VPN tunnel is already active or still disconnecting."
         }
     }
 }
 
+@MainActor
 public final class PacketTunnelManager {
     private let providerBundleIdentifier: String
     private let localizedDescription: String
+    private var manager: NETunnelProviderManager?
+    private var statusObserver: NSObjectProtocol?
+    public var onStatusChange: ((ClientStatus) -> Void)?
 
     public init(
         providerBundleIdentifier: String? = nil,
@@ -32,6 +39,19 @@ public final class PacketTunnelManager {
             ?? Bundle.main.bundleIdentifier.map { "\($0).PacketTunnel" }
             ?? "community.openlibre.olcrtc.ios.PacketTunnel"
         self.localizedDescription = localizedDescription
+    }
+
+    deinit {
+        if let statusObserver { NotificationCenter.default.removeObserver(statusObserver) }
+    }
+
+    public func refreshStatus() async throws {
+        let managers = try await matchingManagers()
+        if let existing = managers.first(where: { !Self.isDisconnected($0.connection) }) ?? managers.first {
+            observe(existing)
+        } else {
+            onStatusChange?(.stopped)
+        }
     }
 
     public static func canAccessPacketTunnelPreferences() async -> Bool {
@@ -47,12 +67,16 @@ public final class PacketTunnelManager {
         profile: ConnectionProfile,
         eventHandler: ((String) async -> Void)? = nil
     ) async throws {
+        try Task.checkCancellation()
         let configuration = PacketTunnelConfiguration(profile: profile.normalizedForCurrentDefaults())
         await eventHandler?("Preparing iOS VPN configuration.")
         let manager = try await loadOrCreateManager()
+        try Task.checkCancellation()
+        guard Self.isDisconnected(manager.connection) else { throw PacketTunnelManagerError.alreadyActive }
         await eventHandler?("Saving iOS VPN configuration.")
         try await configure(manager: manager, configuration: configuration)
         await eventHandler?("Requesting iOS VPN tunnel start.")
+        try Task.checkCancellation()
         try manager.connection.startVPNTunnel(options: configuration.providerConfiguration)
         await eventHandler?("Waiting up to \(configuration.startTimeoutMillis / 1_000)s for iOS VPN tunnel.")
         try await waitUntilConnected(
@@ -62,29 +86,57 @@ public final class PacketTunnelManager {
         )
     }
 
-    public func stop() async {
-        do {
-            let managers = try await Self.loadAllManagers()
-            managers
-                .filter { manager in
-                    (manager.protocolConfiguration as? NETunnelProviderProtocol)?
-                        .providerBundleIdentifier == providerBundleIdentifier
-                }
-                .forEach { $0.connection.stopVPNTunnel() }
-        } catch {
-            return
+    public func stop() async throws {
+        let managers = try await matchingManagers()
+        // Include the cached connection: it can be ahead of the preferences snapshot.
+        let connections = managers.map(\.connection) + (manager.map { [$0.connection] } ?? [])
+        for connection in connections where !Self.isDisconnected(connection) {
+            connection.stopVPNTunnel()
         }
+        try await TunnelShutdownWaiter.wait {
+            connections.allSatisfy(Self.isDisconnected)
+        }
+        onStatusChange?(.stopped)
     }
 
     private func loadOrCreateManager() async throws -> NETunnelProviderManager {
-        let managers = try await Self.loadAllManagers()
-        if let manager = managers.first(where: { manager in
-            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
-                .providerBundleIdentifier == providerBundleIdentifier
-        }) {
-            return manager
+        let managers = try await matchingManagers()
+        let manager = managers.first(where: { !Self.isDisconnected($0.connection) })
+            ?? managers.first ?? NETunnelProviderManager()
+        observe(manager)
+        return manager
+    }
+
+    private func matchingManagers() async throws -> [NETunnelProviderManager] {
+        try await Self.loadAllManagers().filter {
+            ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier == providerBundleIdentifier
         }
-        return NETunnelProviderManager()
+    }
+
+    private static func isDisconnected(_ connection: NEVPNConnection) -> Bool {
+        connection.status == .disconnected || connection.status == .invalid
+    }
+
+    private func observe(_ manager: NETunnelProviderManager) {
+        if let statusObserver { NotificationCenter.default.removeObserver(statusObserver) }
+        self.manager = manager
+        statusObserver = NotificationCenter.default.addObserver(
+            forName: .NEVPNStatusDidChange, object: manager.connection, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.publishStatus() }
+        }
+        publishStatus()
+    }
+
+    private func publishStatus() {
+        guard let manager else { return }
+        switch manager.connection.status {
+        case .connected: onStatusChange?(.ready)
+        case .connecting, .reasserting: onStatusChange?(.starting)
+        case .disconnecting: onStatusChange?(.stopping)
+        case .disconnected, .invalid: onStatusChange?(.stopped)
+        @unknown default: break
+        }
     }
 
     private func configure(
@@ -104,7 +156,9 @@ public final class PacketTunnelManager {
         manager.isEnabled = true
 
         try await save(manager)
+        try Task.checkCancellation()
         try await load(manager)
+        try Task.checkCancellation()
     }
 
     private func waitUntilConnected(
@@ -120,6 +174,7 @@ public final class PacketTunnelManager {
         var sawConnectionAttempt = false
 
         while ContinuousClock.now < deadline {
+            try Task.checkCancellation()
             let status = connection.status
             if status != lastStatus {
                 await eventHandler?("iOS VPN status: \(Self.statusDescription(status)).")

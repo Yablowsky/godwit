@@ -5,7 +5,7 @@ import Darwin
 
 #if os(macOS)
 public final class ProcessOlcRTCEngine: OlcRTCEngine {
-    private let eventPair = AsyncStream<String>.makeStream(of: String.self)
+    private let eventPair = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingNewest(300))
     private let lock = NSLock()
     private var process: Process?
     private var outputPipe: Pipe?
@@ -20,6 +20,7 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
     public init() {}
 
     deinit {
+        eventPair.continuation.finish()
         process?.terminate()
         #if canImport(Darwin)
         if let process, process.isRunning {
@@ -47,6 +48,7 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
     }
 
     public func start(options: OlcRTCStartOptions) async throws {
+        try Task.checkCancellation()
         try validate(options)
 
         let alreadyRunning = withLock { process?.isRunning == true }
@@ -75,6 +77,7 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
     public func waitReady(timeoutMillis: Int) async throws {
         let deadline = Date().addingTimeInterval(Double(timeoutMillis) / 1_000)
         while Date() < deadline {
+            try Task.checkCancellation()
             let state = withLock {
                 (
                     isReady: ready,
@@ -166,14 +169,14 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
         task.standardOutput = pipe
         task.standardError = pipe
 
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        pipe.fileHandleForReading.readabilityHandler = { [weak self, weak task] handle in
             let data = handle.availableData
-            guard !data.isEmpty else { return }
-            self?.handleOutput(data)
+            guard !data.isEmpty, let task else { return }
+            self?.handleOutput(data, from: task)
         }
 
         task.terminationHandler = { [weak self] process in
-            self?.handleTermination(status: process.terminationStatus)
+            self?.handleTermination(process: process, status: process.terminationStatus)
         }
 
         withLock {
@@ -232,8 +235,9 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
         }.value
     }
 
-    private func handleOutput(_ data: Data) {
+    private func handleOutput(_ data: Data, from source: Process) {
         let chunks = withLock {
+            guard process === source else { return [Data]() }
             outputBuffer.append(data)
             return splitCompleteLines()
         }
@@ -243,20 +247,18 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
                   !line.isEmpty else {
                 continue
             }
-            withLock {
+            let isCurrent = withLock {
+                guard process === source else { return false }
                 lastOutputLine = line
-            }
-            emit(line)
-            if line.contains("address already in use") || line.contains("failed to listen") {
-                withLock {
+                if line.contains("address already in use") || line.contains("failed to listen") {
                     portConflictDetected = true
                 }
-            }
-            if line.contains("SOCKS5 server listening") {
-                withLock {
+                if line.contains("SOCKS5 server listening") {
                     ready = true
                 }
+                return true
             }
+            if isCurrent { emit(line) }
         }
     }
 
@@ -269,8 +271,10 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
         return lines
     }
 
-    private func handleTermination(status: Int32) {
-        let state = withLock {
+    private func handleTermination(process terminatedProcess: Process, status: Int32) {
+        let state: (wasStopping: Bool, remaining: Data)? = withLock {
+            // A delayed callback from an old Process must not clear a newer session.
+            guard process === terminatedProcess else { return nil }
             let state = (wasStopping: stopping, remaining: outputBuffer)
             outputBuffer.removeAll(keepingCapacity: true)
             process = nil
@@ -280,6 +284,7 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
             removeConfigFile()
             return state
         }
+        guard let state else { return }
 
         if let line = String(data: state.remaining, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !line.isEmpty {
@@ -390,8 +395,13 @@ public final class ProcessOlcRTCEngine: OlcRTCEngine {
     private func walkUpForSupportRoot(from url: URL) -> URL? {
         var current = url
         for _ in 0..<10 {
-            let names = current.appendingPathComponent("data/names")
-            if FileManager.default.fileExists(atPath: names.path) {
+            // Dictionaries are embedded in the pinned core; data/names no longer exists.
+            let executable = current.appendingPathComponent("olcrtc-macos")
+            let module = current.appendingPathComponent("go.mod")
+            let mobile = current.appendingPathComponent("mobile")
+            if FileManager.default.isExecutableFile(atPath: executable.path)
+                || (FileManager.default.fileExists(atPath: module.path)
+                    && FileManager.default.fileExists(atPath: mobile.path)) {
                 return current
             }
             current.deleteLastPathComponent()

@@ -1,6 +1,6 @@
 import Foundation
 
-public struct OlcRTCStartOptions: Equatable {
+public struct OlcRTCStartOptions: Equatable, Sendable {
     public var carrierName: String
     public var transportName: String
     public var roomID: String

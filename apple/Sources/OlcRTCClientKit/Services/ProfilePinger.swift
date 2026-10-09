@@ -5,7 +5,7 @@ import CFNetwork
 #endif
 
 #if canImport(Mobile)
-import Mobile
+@preconcurrency import Mobile
 #endif
 
 public enum ProfilePingState: Equatable {
@@ -63,6 +63,7 @@ public struct ProfilePinger: ProfilePinging {
     }
 
     public func ping(profile: ConnectionProfile) async throws -> ProfilePingResult {
+        try Task.checkCancellation()
         let socksPort = await Self.portLeases.reserveTemporaryPort()
         let profile = preparedProfileForPing(profile, socksPort: socksPort)
 
@@ -98,28 +99,28 @@ public struct ProfilePinger: ProfilePinging {
     private func pingWithMobile(profile: ConnectionProfile) async throws -> ProfilePingResult {
         let options = OlcRTCStartOptions(profile: profile)
         let timeout = timeoutMillis
-        let measured = try await Task.detached {
-            var error: NSError?
-            var result: Int64 = -1
-            let didPing = MobilePing(
-                options.carrierName,
-                options.transportName,
-                options.roomID,
-                options.clientID,
-                options.keyHex,
-                options.socksPort,
-                timeout,
-                pingURL.absoluteString,
-                options.vp8FPS,
-                options.vp8BatchSize,
-                &result,
-                &error
-            )
-            if !didPing {
-                throw error ?? ProfilePingError.invalidResult
+        let targetURL = pingURL.absoluteString
+        // Runtime.Ping owns a separate bounded probe; Runtime.Stop does NOT cancel
+        // that probe. Keep the port lease until it returns and discard cancelled results.
+        let measured: Int64 = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    guard let runtime = MobileNew() else { throw OlcRTCEngineError.frameworkMissing }
+                    try MobileRuntimeConfiguration.apply(options, to: runtime)
+                    var result: Int64 = -1
+                    try runtime.ping(
+                        options.carrierName, transportName: options.transportName,
+                        roomID: options.roomID, deviceID: options.clientID, keyHex: options.keyHex,
+                        socksPort: options.socksPort, timeoutMillis: timeout, pingURL: targetURL,
+                        vp8FPS: options.vp8FPS, vp8BatchSize: options.vp8BatchSize, ret0: &result
+                    )
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
-            return result
-        }.value
+        }
+        try Task.checkCancellation()
 
         guard measured >= 0 else {
             throw ProfilePingError.invalidResult

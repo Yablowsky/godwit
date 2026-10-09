@@ -59,7 +59,6 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$SWIFT_BINARY" "$MACOS_DIR/Godwit"
 cp "$APPLE_DIR/.build/olcrtc-macos" "$RESOURCES_DIR/olcrtc-macos"
-cp -R "$OLCRTC_DIR/data" "$RESOURCES_DIR/data"
 cp "$APPLE_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'

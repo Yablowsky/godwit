@@ -1,0 +1,58 @@
+name: Validate Apple clients
+
+on:
+  pull_request:
+  push:
+    branches: ['codex/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned revisions
+        id: versions
+        run: |
+          source apple/build-versions.env
+          echo "olcrtc=$OLCRTC_REVISION" >> "$GITHUB_OUTPUT"
+          test "$(xcodebuild -version | head -1)" = "Xcode $GODWIT_XCODE_VERSION"
+      - uses: actions/checkout@v4
+        with:
+          repository: openlibrecommunity/olcrtc
+          ref: ${{ steps.versions.outputs.olcrtc }}
+          path: olcrtc
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: olcrtc/go.mod
+          cache-dependency-path: olcrtc/go.sum
+      - name: Unit tests and concurrency diagnostics
+        run: swift test --package-path apple -Xswiftc -strict-concurrency=complete
+      - name: Build pinned Mobile framework
+        run: ./apple/Scripts/build-xcframework.sh --olcrtc-root "$GITHUB_WORKSPACE/olcrtc"
+      - name: Build iOS app and Packet Tunnel (unsigned)
+        run: |
+          xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient iOS' \
+            -destination 'generic/platform=iOS' -configuration Debug \
+            -derivedDataPath apple/.build/validation-ios \
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build
+      - name: Build macOS application
+        run: |
+          xcodebuild -project apple/Godwit.xcodeproj -scheme 'OlcRTCClient macOS' \
+            -destination 'generic/platform=macOS' -configuration Debug \
+            -derivedDataPath apple/.build/validation-macos \
+            CODE_SIGNING_ALLOWED=NO SWIFT_STRICT_CONCURRENCY=complete build
+      - name: Build standalone macOS bundle
+        env:
+          CONFIGURATION: release
+        run: ./apple/Scripts/build-macos-app.sh --olcrtc-root "$GITHUB_WORKSPACE/olcrtc"

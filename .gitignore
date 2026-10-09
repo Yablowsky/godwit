@@ -254,3 +254,4 @@ go.work.sum
 # .vscode/
 build/
 GEMINI.md
+apple/Frameworks/.mobile-build.*/

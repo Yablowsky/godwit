@@ -598,8 +598,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/EbrahimTahernejad/Tun2SocksKit.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = e521c1d4507a077d770c7244b0b0fb97146bb794;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

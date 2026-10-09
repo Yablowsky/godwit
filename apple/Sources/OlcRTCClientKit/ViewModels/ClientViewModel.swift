@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 private enum RunningMode {
     case localProxy
@@ -39,6 +42,8 @@ public final class ClientViewModel: ObservableObject {
     @Published public var selectedProfileID: UUID?
     @Published public var draft: ConnectionProfile
     @Published public private(set) var status: ClientStatus = .stopped
+    @Published public private(set) var isStopInProgress = false
+    @Published public private(set) var isRestoringVPNStatus = false
     @Published public private(set) var logs: [String] = []
     @Published public var useSystemProxy: Bool {
         didSet {
@@ -67,9 +72,12 @@ public final class ClientViewModel: ObservableObject {
     #if os(iOS)
     private let packetTunnelManager = PacketTunnelManager()
     private let backgroundRuntimeKeeper = BackgroundRuntimeKeeper()
+    private var foregroundObserver: NSObjectProtocol?
     #endif
     private var eventTask: Task<Void, Never>?
     private var startTask: Task<Void, Never>?
+    private var stopTask: Task<Void, Never>?
+    private var healthTask: Task<Void, Never>?
     private var importTask: Task<Void, Never>?
     private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     private var refreshTaskTokens: [UUID: UUID] = [:]
@@ -80,6 +88,7 @@ public final class ClientViewModel: ObservableObject {
     private var pingTasks: [UUID: Task<Void, Never>] = [:]
     private var subscriptionPingTasks: [UUID: Task<Void, Never>] = [:]
     private var runningMode: RunningMode?
+    private var enabledSystemProxyService: String?
 
     public init(
         engine: OlcRTCEngine = OlcRTCEngineFactory.makeDefault(),
@@ -124,6 +133,7 @@ public final class ClientViewModel: ObservableObject {
         loadNetworkServices()
         rescheduleAutomaticSubscriptionRefreshes()
         #if os(iOS)
+        observePacketTunnelStatus()
         if !hasStoredUseSystemProxy {
             enableSystemVPNByDefaultIfAvailable()
         }
@@ -133,12 +143,14 @@ public final class ClientViewModel: ObservableObject {
     deinit {
         eventTask?.cancel()
         startTask?.cancel()
+        healthTask?.cancel()
         importTask?.cancel()
         refreshTasks.values.forEach { $0.cancel() }
         automaticRefreshTasks.values.forEach { $0.cancel() }
         pingTasks.values.forEach { $0.cancel() }
         subscriptionPingTasks.values.forEach { $0.cancel() }
         #if os(iOS)
+        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
         Task { @MainActor [backgroundRuntimeKeeper] in
             backgroundRuntimeKeeper.stop()
         }
@@ -155,7 +167,10 @@ public final class ClientViewModel: ObservableObject {
 
     public var canStart: Bool {
         selectedProfileID != nil && !status.isRunning && validationMessage == nil
+            && startTask == nil && stopTask == nil && runningMode == nil && !isRestoringVPNStatus
     }
+
+    public var canStop: Bool { status.isRunning && !isStopInProgress }
 
     public var validationMessage: String? {
         validate(profile: draft)
@@ -397,8 +412,8 @@ public final class ClientViewModel: ObservableObject {
     }
 
     public func start() {
+        guard canStart else { return }
         saveDraft()
-        startTask?.cancel()
 
         let profileToStart = draft.normalizedForCurrentDefaults()
         if profileToStart != draft {
@@ -435,28 +450,32 @@ public final class ClientViewModel: ObservableObject {
 
         startTask = Task { [weak self] in
             guard let self else { return }
+            defer { startTask = nil }
 
             do {
                 let activePort = try await startEngineUntilReady(options: options)
+                try Task.checkCancellation()
                 status = .ready
                 appendLog(AppLocalization.format("SOCKS proxy is ready on 127.0.0.1:%d.", activePort))
                 #if os(iOS)
                 startLocalProxyBackgroundRuntime()
                 #endif
                 await enableSystemProxyIfNeeded(port: activePort)
+                try Task.checkCancellation()
+                monitorLocalRuntime()
             } catch {
-                if error is CancellationError {
-                    await engine.stop()
-                    return
-                }
-
-                runningMode = nil
-                status = .failed(error.localizedDescription)
-                appendLog(AppLocalization.format("Could not connect: %@", error.localizedDescription))
                 #if os(iOS)
                 backgroundRuntimeKeeper.stop()
                 #endif
                 await engine.stop()
+                guard !Task.isCancelled else { return }
+                if await engine.isRunning {
+                    status = .stopping
+                } else {
+                    runningMode = nil
+                    status = .failed(error.localizedDescription)
+                }
+                appendLog(AppLocalization.format("Could not connect: %@", error.localizedDescription))
             }
         }
     }
@@ -464,13 +483,17 @@ public final class ClientViewModel: ObservableObject {
     private func startEngineUntilReady(options: OlcRTCStartOptions) async throws -> Int {
         for attempt in 0...portConflictRetryAttempts {
             do {
+                try Task.checkCancellation()
                 try await engine.start(options: options)
+                try Task.checkCancellation()
                 try await engine.waitReady(
                     timeoutMillis: max(options.startTimeoutMillis, ConnectionProfile.defaultStartTimeoutMillis)
                 )
+                try Task.checkCancellation()
                 return await engine.activeSocksPort ?? options.socksPort
             } catch {
                 await engine.stop()
+                try Task.checkCancellation()
 
                 guard !(error is CancellationError) else {
                     throw error
@@ -513,27 +536,49 @@ public final class ClientViewModel: ObservableObject {
     }
 
     public func stop() {
+        guard canStop, stopTask == nil else { return }
+        let pendingStart = startTask
+        let modeToStop = runningMode
         startTask?.cancel()
+        healthTask?.cancel()
+        healthTask = nil
+        isStopInProgress = true
         status = .stopping
         appendLog(AppLocalization.format("Disconnecting: %@.", selectedProfileName))
 
-        Task { [weak self] in
+        stopTask = Task { [weak self] in
             guard let self else { return }
-            switch runningMode {
-            #if os(iOS)
-            case .packetTunnel:
-                await packetTunnelManager.stop()
-                appendLog(AppLocalization.string("iOS VPN tunnel stopped."))
-            #endif
-            case .localProxy, nil:
-                #if os(iOS)
-                backgroundRuntimeKeeper.stop()
-                #endif
-                await disableSystemProxyIfNeeded()
-                await engine.stop()
+            defer {
+                stopTask = nil
+                isStopInProgress = false
             }
-            runningMode = nil
-            status = .stopped
+            do {
+                switch modeToStop {
+                #if os(iOS)
+                case .packetTunnel:
+                    // The cancelled start must not save preferences/start a new tunnel after Stop.
+                    await pendingStart?.value
+                    try await packetTunnelManager.stop()
+                    appendLog(AppLocalization.string("iOS VPN tunnel stopped."))
+                #endif
+                case .localProxy, nil:
+                    #if os(iOS)
+                    backgroundRuntimeKeeper.stop()
+                    #endif
+                    // Interrupt WaitReady, then join startup before removing system proxy settings.
+                    await engine.stop()
+                    await pendingStart?.value
+                    await engine.stop()
+                    guard !(await engine.isRunning) else { throw TunnelShutdownError.timedOut }
+                }
+                await disableSystemProxyIfNeeded()
+                runningMode = nil
+                status = .stopped
+            } catch {
+                // A timeout/error is not a disconnected VPN. Leave Stop available for retry.
+                status = .stopping
+                appendLog("Could not finish disconnecting: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -1065,10 +1110,27 @@ public final class ClientViewModel: ObservableObject {
     }
 
     private func observeEngineEvents() {
-        eventTask = Task { [weak self] in
-            guard let self else { return }
+        eventTask = Task { [weak self, engine] in
             for await message in engine.events {
-                appendLog(message)
+                guard !Task.isCancelled, let self else { return }
+                self.appendLog(message)
+            }
+        }
+    }
+
+    private func monitorLocalRuntime() {
+        healthTask?.cancel()
+        healthTask = Task { [weak self, engine] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                let running = await engine.isRunning
+                guard !Task.isCancelled, let self,
+                      self.runningMode == .localProxy, self.status == .ready else { return }
+                if !running {
+                    self.appendLog("The local proxy runtime exited unexpectedly; cleaning up the connection.")
+                    self.stop()
+                    return
+                }
             }
         }
     }
@@ -1094,6 +1156,36 @@ public final class ClientViewModel: ObservableObject {
     }
 
     #if os(iOS)
+    private func observePacketTunnelStatus() {
+        packetTunnelManager.onStatusChange = { [weak self] state in
+            guard let self, self.runningMode != .localProxy,
+                  self.startTask == nil, !self.isStopInProgress else { return }
+            self.runningMode = state.isRunning ? .packetTunnel : nil
+            self.status = state
+        }
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.restorePacketTunnelStatus() }
+        }
+        restorePacketTunnelStatus()
+    }
+
+    private func restorePacketTunnelStatus() {
+        guard !isRestoringVPNStatus, startTask == nil, stopTask == nil,
+              runningMode != .localProxy else { return }
+        isRestoringVPNStatus = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { isRestoringVPNStatus = false }
+            do {
+                try await packetTunnelManager.refreshStatus()
+            } catch {
+                appendLog("Could not read iOS VPN status: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func enableSystemVPNByDefaultIfAvailable() {
         Task { [weak self] in
             guard let self,
@@ -1120,21 +1212,27 @@ public final class ClientViewModel: ObservableObject {
 
         startTask = Task { [weak self] in
             guard let self else { return }
+            defer { startTask = nil }
 
             do {
                 try await packetTunnelManager.start(profile: profile)
+                try Task.checkCancellation()
                 status = .ready
                 appendLog(AppLocalization.string("iOS VPN tunnel connected. System traffic is routed through olcRTC."))
             } catch {
-                if error is CancellationError {
-                    await packetTunnelManager.stop()
-                    return
-                }
-
-                runningMode = nil
-                status = .failed(error.localizedDescription)
+                // stop() owns cleanup after cancellation and joins this task first.
+                guard !Task.isCancelled else { return }
                 appendLog(AppLocalization.format("Could not start VPN: %@", vpnStartFailureMessage(error)))
-                await packetTunnelManager.stop()
+                do {
+                    try await packetTunnelManager.stop()
+                    guard !Task.isCancelled else { return }
+                    runningMode = nil
+                    status = .failed(error.localizedDescription)
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    status = .stopping
+                    appendLog("VPN cleanup failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -1166,7 +1264,9 @@ public final class ClientViewModel: ObservableObject {
         }
 
         do {
-            try await systemProxyManager.enable(service: selectedNetworkService, host: "127.0.0.1", port: port)
+            let service = selectedNetworkService
+            try await systemProxyManager.enable(service: service, host: "127.0.0.1", port: port)
+            enabledSystemProxyService = service
             appendLog(
                 AppLocalization.format(
                     "System SOCKS proxy is enabled for %@ on 127.0.0.1:%d.",
@@ -1189,13 +1289,14 @@ public final class ClientViewModel: ObservableObject {
 
     private func disableSystemProxyIfNeeded() async {
         #if os(macOS)
-        guard useSystemProxy else {
+        guard let service = enabledSystemProxyService else {
             return
         }
 
         do {
-            try await systemProxyManager.disable(service: selectedNetworkService)
-            appendLog(AppLocalization.format("System SOCKS proxy is disabled for %@.", selectedNetworkService))
+            try await systemProxyManager.disable(service: service)
+            enabledSystemProxyService = nil
+            appendLog(AppLocalization.format("System SOCKS proxy is disabled for %@.", service))
         } catch {
             appendLog(AppLocalization.format("Could not clear system proxy settings: %@", error.localizedDescription))
         }

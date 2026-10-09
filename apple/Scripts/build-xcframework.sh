@@ -45,13 +45,6 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 
-command -v gomobile >/dev/null 2>&1 || {
-  echo "gomobile not found. Install it with:"
-  echo "  go install golang.org/x/mobile/cmd/gomobile@latest"
-  echo "  gomobile init"
-  exit 1
-}
-
 if ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   cat <<'MSG'
 Xcode iOS SDK is not ready.
@@ -65,15 +58,22 @@ MSG
   exit 1
 fi
 
+source "$APPLE_DIR/Scripts/mobile-tools.sh"
+prepare_mobile_tools
+
 mkdir -p "$OUT_DIR"
-rm -rf "$OUT"
+BUILD_TMP="$(mktemp -d "$OUT_DIR/.mobile-build.XXXXXX")"
 
 cd "$OLCRTC_DIR"
 
 gomobile bind \
   -target=ios,iossimulator,macos \
   -ldflags="-s -w -checklinkname=0" \
-  -o "$OUT" \
+  -o "$BUILD_TMP/Mobile.xcframework" \
   ./mobile
 
+if [[ -e "$OUT" ]]; then
+  mv "$OUT" "$BUILD_TMP/previous-Mobile.xcframework"
+fi
+mv "$BUILD_TMP/Mobile.xcframework" "$OUT"
 echo "Built $OUT"
