@@ -9,7 +9,6 @@ struct OlcRTCConfigYAMLBuilder {
         var lines: [String] = []
 
         lines.append("mode: cnc")
-        lines.append("link: direct")
         lines.append("auth:")
         lines.append("  provider: \(yamlString(options.carrierName))")
         lines.append("room:")
@@ -48,6 +47,8 @@ struct OlcRTCConfigYAMLBuilder {
             lines.append("  width: \(options.videoWidth)")
             lines.append("  height: \(options.videoHeight)")
             lines.append("  fps: \(options.videoFPS)")
+            lines.append("  bitrate: \(yamlString(options.videoBitrate))")
+            lines.append("  hw: \(yamlString(options.videoHardwareAcceleration))")
             lines.append("  codec: \(yamlString(options.videoCodec))")
             lines.append("  qr_size: \(options.videoQRSize)")
             lines.append("  qr_recovery: \(yamlString(options.videoQRRecovery))")

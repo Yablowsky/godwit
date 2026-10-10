@@ -35,7 +35,6 @@ final class OlcRTCConfigYAMLBuilderTests: XCTestCase {
             yaml,
             """
             mode: cnc
-            link: direct
             auth:
               provider: "jitsi"
             room:

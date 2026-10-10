@@ -33,7 +33,7 @@ jobs:
           test "$(xcodebuild -version | head -1)" = "Xcode $GODWIT_XCODE_VERSION"
       - uses: actions/checkout@v4
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: Yablowsky/olcrtc-legacy
           ref: ${{ steps.versions.outputs.olcrtc }}
           path: olcrtc
       - uses: actions/setup-go@v5

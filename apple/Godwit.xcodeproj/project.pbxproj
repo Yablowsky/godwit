@@ -395,7 +395,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = community.openlibre.olcrtc.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = com.egorozh.godwit.legacy;
 				PRODUCT_NAME = Godwit;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -408,14 +408,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Godwit;
+				INFOPLIST_KEY_CFBundleDisplayName = "Godwit Legacy";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				PRODUCT_BUNDLE_IDENTIFIER = community.openlibre.olcrtc.macos;
+				PRODUCT_BUNDLE_IDENTIFIER = com.egorozh.godwit.legacy.macos;
 				PRODUCT_NAME = Godwit;
 				SDKROOT = macosx;
 			};
@@ -427,14 +427,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Godwit;
+				INFOPLIST_KEY_CFBundleDisplayName = "Godwit Legacy";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				PRODUCT_BUNDLE_IDENTIFIER = community.openlibre.olcrtc.macos;
+				PRODUCT_BUNDLE_IDENTIFIER = com.egorozh.godwit.legacy.macos;
 				PRODUCT_NAME = Godwit;
 				SDKROOT = macosx;
 			};
@@ -452,7 +452,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = community.openlibre.olcrtc.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = com.egorozh.godwit.legacy;
 				PRODUCT_NAME = Godwit;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -525,7 +525,7 @@
 				INFOPLIST_FILE = Sources/OlcRTCPacketTunnel/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = community.openlibre.olcrtc.ios.PacketTunnel;
+				PRODUCT_BUNDLE_IDENTIFIER = com.egorozh.godwit.legacy.PacketTunnel;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -539,7 +539,7 @@
 				INFOPLIST_FILE = Sources/OlcRTCPacketTunnel/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = community.openlibre.olcrtc.ios.PacketTunnel;
+				PRODUCT_BUNDLE_IDENTIFIER = com.egorozh.godwit.legacy.PacketTunnel;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

@@ -48,7 +48,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: Yablowsky/olcrtc-legacy
           ref: ${{ steps.versions.outputs.olcrtc }}
           path: olcrtc
 

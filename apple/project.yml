@@ -24,7 +24,7 @@ targets:
     info:
       path: Sources/OlcRTCClientiOS/Info.plist
       properties:
-        CFBundleDisplayName: Godwit
+        CFBundleDisplayName: Godwit Legacy
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
@@ -46,7 +46,7 @@ targets:
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: community.openlibre.olcrtc.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.egorozh.godwit.legacy
         PRODUCT_NAME: Godwit
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Sources/OlcRTCClientiOS/OlcRTCClientiOS.entitlements
@@ -63,7 +63,7 @@ targets:
         product: Tun2SocksKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: community.openlibre.olcrtc.ios.PacketTunnel
+        PRODUCT_BUNDLE_IDENTIFIER: com.egorozh.godwit.legacy.PacketTunnel
         INFOPLIST_FILE: Sources/OlcRTCPacketTunnel/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/OlcRTCPacketTunnel/OlcRTCPacketTunnel.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
@@ -80,8 +80,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: community.openlibre.olcrtc.macos
-        INFOPLIST_KEY_CFBundleDisplayName: Godwit
+        PRODUCT_BUNDLE_IDENTIFIER: com.egorozh.godwit.legacy.macos
+        INFOPLIST_KEY_CFBundleDisplayName: Godwit Legacy
         PRODUCT_NAME: Godwit
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
 schemes:

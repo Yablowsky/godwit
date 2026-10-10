@@ -100,20 +100,19 @@ public struct ProfilePinger: ProfilePinging {
         let options = OlcRTCStartOptions(profile: profile)
         let timeout = timeoutMillis
         let targetURL = pingURL.absoluteString
-        // Runtime.Ping owns a separate bounded probe; Runtime.Stop does NOT cancel
+        // MobilePing owns a separate bounded probe; MobileStop does NOT cancel
         // that probe. Keep the port lease until it returns and discard cancelled results.
         let measured: Int64 = try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 do {
-                    guard let runtime = MobileNew() else { throw OlcRTCEngineError.frameworkMissing }
-                    try MobileRuntimeConfiguration.apply(options, to: runtime)
+                    try LegacyMobileConfiguration.validate(options)
                     var result: Int64 = -1
-                    try runtime.ping(
-                        options.carrierName, transportName: options.transportName,
-                        roomID: options.roomID, deviceID: options.clientID, keyHex: options.keyHex,
-                        socksPort: options.socksPort, timeoutMillis: timeout, pingURL: targetURL,
-                        vp8FPS: options.vp8FPS, vp8BatchSize: options.vp8BatchSize, ret0_: &result
-                    )
+                    var error: NSError?
+                    guard MobilePing(
+                        options.carrierName, options.transportName, options.roomID,
+                        options.clientID, options.keyHex, options.socksPort, timeout, targetURL,
+                        options.vp8FPS, options.vp8BatchSize, &result, &error
+                    ) else { throw error ?? ProfilePingError.invalidResult }
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)

@@ -72,13 +72,13 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key>
   <string>Godwit</string>
   <key>CFBundleIdentifier</key>
-  <string>community.openlibre.olcrtc.macos.dev</string>
+  <string>com.egorozh.godwit.legacy.macos.dev</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
   <string>Godwit</string>
   <key>CFBundleDisplayName</key>
-  <string>Godwit</string>
+  <string>Godwit Legacy</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>

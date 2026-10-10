@@ -1303,6 +1303,11 @@ public final class ClientViewModel: ObservableObject {
     }
 
     private func validate(profile: ConnectionProfile) -> String? {
+        #if os(iOS)
+        if ![Transport.vp8channel, .datachannel].contains(profile.transport) {
+            return "Legacy на iOS поддерживает только VP8 и datachannel. Выберите совместимый профиль."
+        }
+        #endif
         if profile.keyHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return AppLocalization.string("Enter the encryption key.")
         }

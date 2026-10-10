@@ -3,9 +3,9 @@ import XCTest
 @testable import OlcRTCClientKit
 
 final class ConnectionProfileTests: XCTestCase {
-    func testNewProfilesUseThirtyFPS() {
+    func testNewProfilesUseLegacyVP8Defaults() {
         let profile = ConnectionProfile.empty
-        XCTAssertEqual(profile.vp8FPS, 30)
+        XCTAssertEqual(profile.vp8FPS, 60)
         XCTAssertEqual(profile.seiFPS, 30)
         XCTAssertEqual(profile.videoFPS, 30)
     }

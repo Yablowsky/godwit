@@ -16,11 +16,17 @@ public enum Carrier: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 
     public var allowedTransports: [Transport] {
+        #if os(iOS)
+        switch self {
+        case .telemost: [.vp8channel]
+        case .wbstream, .jitsi: [.datachannel, .vp8channel]
+        }
+        #else
         switch self {
         case .telemost: [.vp8channel, .videochannel]
-        case .wbstream: [.datachannel, .vp8channel, .seichannel, .videochannel]
-        case .jitsi:    [.datachannel, .vp8channel, .seichannel, .videochannel]
+        case .wbstream, .jitsi: [.datachannel, .vp8channel, .seichannel, .videochannel]
         }
+        #endif
     }
 }
 
@@ -96,7 +102,7 @@ public struct ConnectionProfile: Codable, Equatable, Identifiable, Sendable {
         socksPass: String = "",
         dnsServer: String = "77.88.8.8:53",
         debugLogging: Bool = false,
-        vp8FPS: Int = 30,
+        vp8FPS: Int = 60,
         vp8BatchSize: Int = 64,
         seiFPS: Int = 30,
         seiBatchSize: Int = 64,

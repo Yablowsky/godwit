@@ -1,3 +1,5 @@
+> **Legacy branch:** см. [инструкцию по двум версиям](two-editions.md). Эта ветка использует `Yablowsky/olcrtc-legacy` (`e2c4b1e`), старый singleton API и отдельные Bundle ID. Упоминания Mobile.Runtime и modern SHA ниже относятся к исходному плану Modern.
+
 # Разработка
 
 ## Закреплённое ядро и проверка изменений
