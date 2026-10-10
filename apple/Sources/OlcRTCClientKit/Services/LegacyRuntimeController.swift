@@ -20,7 +20,7 @@ final class LegacyRuntimeController: @unchecked Sendable {
     private let lock = NSLock()
     private var current: Session?
     private var port: Int?
-    private var stopWaiters: [@Sendable (Bool) -> Void] = []
+    private var stopWaiters: [UUID: @Sendable (Bool) -> Void] = [:]
 
     init(api: API) { self.api = api }
 
@@ -76,14 +76,14 @@ final class LegacyRuntimeController: @unchecked Sendable {
                                 return
                             }
                             queue.async { [self] in
-                            continuation.resume(with: Result {
-                                try withLock {
-                                    guard current === session, !session.stopping else { throw CancellationError() }
-                                }
-                                // Short slices let queued Stop run promptly without allowing
-                                // a stale WaitReady to attach to the next global session.
-                                try api.waitReady(100)
-                            })
+                                continuation.resume(with: Result {
+                                    try withLock {
+                                        guard current === session, !session.stopping else { throw CancellationError() }
+                                    }
+                                    // Short slices let queued Stop run promptly without allowing
+                                    // a stale WaitReady to attach to the next global session.
+                                    try api.waitReady(100)
+                                })
                             }
                         }
                     }
@@ -108,14 +108,17 @@ final class LegacyRuntimeController: @unchecked Sendable {
     func stop(_ session: Session, timeoutMillis: Int = 5_000) async -> Bool {
         await withCheckedContinuation { continuation in
             let completion = LegacyStopCompletion(continuation)
-            requestStop(session) { completion.finish($0) }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(timeoutMillis)) {
+            let waiterID = UUID()
+            requestStop(session, waiterID: waiterID) { completion.finish($0) }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(timeoutMillis)) { [self] in
+                // A permanently blocked native Stop must not accumulate timed-out waiters.
+                withLock { _ = stopWaiters.removeValue(forKey: waiterID) }
                 completion.finish(false)
             }
         }
     }
 
-    func requestStop(_ session: Session, completion: (@Sendable (Bool) -> Void)? = nil) {
+    func requestStop(_ session: Session, waiterID: UUID = UUID(), completion: (@Sendable (Bool) -> Void)? = nil) {
         withLock {
             let alreadyStopping = session.stopping
             session.stopping = true
@@ -123,14 +126,14 @@ final class LegacyRuntimeController: @unchecked Sendable {
                 completion?(true)
                 return
             }
-            if let completion { stopWaiters.append(completion) }
+            if let completion { stopWaiters[waiterID] = completion }
             guard !alreadyStopping else { return }
             queue.async { [self] in
                 api.stop()
                 let waiters = withLock {
                     current = nil
                     port = nil
-                    let waiters = stopWaiters
+                    let waiters = Array(stopWaiters.values)
                     stopWaiters.removeAll()
                     return waiters
                 }

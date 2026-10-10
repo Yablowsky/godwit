@@ -1,3 +1,5 @@
+> **Godwit Legacy:** инструкция по сборке и подписи обеих версий — [docs/two-editions.md](docs/two-editions.md).
+
 # Godwit
 
 macOS/iOS-клиент Godwit для olcRTC.

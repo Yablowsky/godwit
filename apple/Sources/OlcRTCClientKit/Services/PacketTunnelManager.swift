@@ -33,11 +33,11 @@ public final class PacketTunnelManager {
 
     public init(
         providerBundleIdentifier: String? = nil,
-        localizedDescription: String = "Godwit"
+        localizedDescription: String = "Godwit Legacy"
     ) {
         self.providerBundleIdentifier = providerBundleIdentifier
             ?? Bundle.main.bundleIdentifier.map { "\($0).PacketTunnel" }
-            ?? "community.openlibre.olcrtc.ios.PacketTunnel"
+            ?? "com.egorozh.godwit.legacy.PacketTunnel"
         self.localizedDescription = localizedDescription
     }
 
