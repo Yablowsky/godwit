@@ -3,6 +3,29 @@ import XCTest
 @testable import OlcRTCClientKit
 
 final class ConnectionProfileTests: XCTestCase {
+    func testNewProfilesUseThirtyFPS() {
+        let profile = ConnectionProfile.empty
+        XCTAssertEqual(profile.vp8FPS, 30)
+        XCTAssertEqual(profile.seiFPS, 30)
+        XCTAssertEqual(profile.videoFPS, 30)
+    }
+
+    func testLegacyProfilesKeepTheirOldFPSDefaults() throws {
+        let data = Data("{\"id\":\"\(UUID().uuidString)\",\"name\":\"Legacy\"}".utf8)
+        let profile = try JSONDecoder().decode(ConnectionProfile.self, from: data)
+        XCTAssertEqual(profile.vp8FPS, 60)
+        XCTAssertEqual(profile.seiFPS, 60)
+        XCTAssertEqual(profile.videoFPS, 60)
+    }
+
+    func testExistingCustomFPSIsNotMigrated() throws {
+        let original = ConnectionProfile(name: "Custom", vp8FPS: 24, seiFPS: 25, videoFPS: 20)
+        let restored = try JSONDecoder().decode(ConnectionProfile.self, from: JSONEncoder().encode(original))
+        XCTAssertEqual(restored.normalizedForCurrentDefaults().vp8FPS, 24)
+        XCTAssertEqual(restored.seiFPS, 25)
+        XCTAssertEqual(restored.videoFPS, 20)
+    }
+
     func testEmptyProfileUsesDefaultSocksPort() {
         XCTAssertEqual(ConnectionProfile.empty.socksPort, 21_080)
         XCTAssertEqual(ConnectionProfile.empty.socksPort, ConnectionProfile.defaultSocksPort)

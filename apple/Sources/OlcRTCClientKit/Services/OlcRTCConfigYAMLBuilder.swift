@@ -3,7 +3,7 @@ import Foundation
 struct OlcRTCConfigYAMLBuilder {
     var options: OlcRTCStartOptions
     var socksPort: Int
-    var dataPath: String = "data"
+    var dataPath: String? = nil
 
     func yaml() -> String {
         var lines: [String] = []
@@ -25,7 +25,7 @@ struct OlcRTCConfigYAMLBuilder {
         appendIfPresent("  user", options.socksUser, to: &lines)
         appendIfPresent("  pass", options.socksPass, to: &lines)
         appendTransportOptions(to: &lines)
-        lines.append("data: \(yamlString(dataPath))")
+        if let dataPath { lines.append("data: \(yamlString(dataPath))") }
         lines.append("debug: \(options.debugLogging ? "true" : "false")")
 
         return lines.joined(separator: "\n") + "\n"
@@ -48,8 +48,6 @@ struct OlcRTCConfigYAMLBuilder {
             lines.append("  width: \(options.videoWidth)")
             lines.append("  height: \(options.videoHeight)")
             lines.append("  fps: \(options.videoFPS)")
-            lines.append("  bitrate: \(yamlString(options.videoBitrate))")
-            lines.append("  hw: \(yamlString(options.videoHardwareAcceleration))")
             lines.append("  codec: \(yamlString(options.videoCodec))")
             lines.append("  qr_size: \(options.videoQRSize)")
             lines.append("  qr_recovery: \(yamlString(options.videoQRRecovery))")

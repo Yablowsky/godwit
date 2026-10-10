@@ -59,7 +59,6 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$SWIFT_BINARY" "$MACOS_DIR/Godwit"
 cp "$APPLE_DIR/.build/olcrtc-macos" "$RESOURCES_DIR/olcrtc-macos"
-cp -R "$OLCRTC_DIR/data" "$RESOURCES_DIR/data"
 cp "$APPLE_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
@@ -73,13 +72,13 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key>
   <string>Godwit</string>
   <key>CFBundleIdentifier</key>
-  <string>community.openlibre.olcrtc.macos.dev</string>
+  <string>com.egorozh.godwit.macos.dev</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
   <string>Godwit</string>
   <key>CFBundleDisplayName</key>
-  <string>Godwit</string>
+  <string>Godwit Modern</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>

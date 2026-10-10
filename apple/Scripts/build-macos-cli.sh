@@ -41,6 +41,8 @@ source "$APPLE_DIR/Scripts/olcrtc-root.sh"
 OLCRTC_DIR="$(require_olcrtc_root "$OLCRTC_ROOT_ARG" "Usage: ./apple/Scripts/build-macos-cli.sh --olcrtc-root /path/to/olcrtc")"
 
 mkdir -p "$(dirname "$OUT")"
+source "$APPLE_DIR/build-versions.env"
+export GOTOOLCHAIN="go$GODWIT_GO_VERSION"
 cd "$OLCRTC_DIR"
 
 go build \

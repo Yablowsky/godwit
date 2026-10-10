@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Carrier: String, CaseIterable, Codable, Identifiable {
+public enum Carrier: String, CaseIterable, Codable, Identifiable, Sendable {
     case jitsi
     case telemost
     case wbstream
@@ -24,7 +24,7 @@ public enum Carrier: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-public enum Transport: String, CaseIterable, Codable, Identifiable {
+public enum Transport: String, CaseIterable, Codable, Identifiable, Sendable {
     case vp8channel
     case datachannel
     case seichannel
@@ -42,7 +42,7 @@ public enum Transport: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-public struct ConnectionProfile: Codable, Equatable, Identifiable {
+public struct ConnectionProfile: Codable, Equatable, Identifiable, Sendable {
     public static let defaultStartTimeoutMillis = 60_000
     public static let minimumSocksPort = 1_024
     public static let maximumSocksPort = 65_535
@@ -96,16 +96,16 @@ public struct ConnectionProfile: Codable, Equatable, Identifiable {
         socksPass: String = "",
         dnsServer: String = "77.88.8.8:53",
         debugLogging: Bool = false,
-        vp8FPS: Int = 60,
+        vp8FPS: Int = 30,
         vp8BatchSize: Int = 64,
-        seiFPS: Int = 60,
+        seiFPS: Int = 30,
         seiBatchSize: Int = 64,
         seiFragmentSize: Int = 900,
         seiAckTimeoutMillis: Int = 2_000,
         videoCodec: String = "qrcode",
         videoWidth: Int = 1080,
         videoHeight: Int = 1080,
-        videoFPS: Int = 60,
+        videoFPS: Int = 30,
         videoBitrate: String = "5000k",
         videoHardwareAcceleration: String = "none",
         videoQRRecovery: String = "low",
@@ -240,7 +240,7 @@ public struct ConnectionProfile: Codable, Equatable, Identifiable {
     }
 }
 
-public struct SubscriptionMetadata: Codable, Equatable, Identifiable {
+public struct SubscriptionMetadata: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
     public var sourceURL: String?

@@ -11,7 +11,7 @@ public enum SystemProxyError: LocalizedError {
     }
 }
 
-public final class SystemProxyManager {
+public final class SystemProxyManager: Sendable {
     public init() {}
 
     public func networkServices() async -> [String] {

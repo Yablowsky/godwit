@@ -1,6 +1,6 @@
 import Foundation
 
-public struct OlcRTCStartOptions: Equatable {
+public struct OlcRTCStartOptions: Equatable, Sendable {
     public var carrierName: String
     public var transportName: String
     public var roomID: String
@@ -93,7 +93,7 @@ public enum OlcRTCEngineError: LocalizedError, Equatable {
     }
 }
 
-public protocol OlcRTCEngine: AnyObject {
+public protocol OlcRTCEngine: AnyObject, Sendable {
     var events: AsyncStream<String> { get }
     var isRunning: Bool { get async }
     var activeSocksPort: Int? { get async }

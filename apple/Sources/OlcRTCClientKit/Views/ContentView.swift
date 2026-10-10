@@ -298,7 +298,7 @@ private struct ProfileSettingsScreen: View {
     private var socksPortStepperValue: Binding<Int> {
         Binding(
             get: { viewModel.draft.socksPort },
-            set: setSocksPort
+            set: { setSocksPort($0) }
         )
     }
 
@@ -681,7 +681,7 @@ private struct ConnectionPanel: View {
             .buttonStyle(.bordered)
             .controlSize(.regular)
             .accessibilityLabel("Отключить")
-            .disabled(viewModel.status == .stopping)
+            .disabled(!viewModel.canStop)
         } else {
             Button(action: viewModel.start) {
                 Image(systemName: "power")

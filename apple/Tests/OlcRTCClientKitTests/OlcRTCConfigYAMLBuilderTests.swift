@@ -2,6 +2,14 @@ import XCTest
 @testable import OlcRTCClientKit
 
 final class OlcRTCConfigYAMLBuilderTests: XCTestCase {
+    func testVideoConfigDoesNotEmitRemovedCoreOptions() {
+        let profile = ConnectionProfile(name: "Video", transport: .videochannel)
+        let yaml = OlcRTCConfigYAMLBuilder(options: OlcRTCStartOptions(profile: profile), socksPort: profile.socksPort).yaml()
+        XCTAssertFalse(yaml.contains("bitrate:"))
+        XCTAssertFalse(yaml.contains("hw:"))
+        XCTAssertTrue(yaml.contains("video:"))
+    }
+
     private let key = "258aa76a14d8e5d22a9eeb57190e454d4062c5185ec4b5f9a3631de76f3001a2"
 
     func testBuildsDocumentedJitsiDatachannelClientConfig() {
@@ -40,12 +48,12 @@ final class OlcRTCConfigYAMLBuilderTests: XCTestCase {
             socks:
               host: "127.0.0.1"
               port: 21080
-            data: "data"
             debug: false
 
             """
         )
         XCTAssertFalse(yaml.contains("legacy-client"))
+        XCTAssertFalse(yaml.contains("data:"))
         XCTAssertFalse(yaml.contains("vp8:"))
         XCTAssertFalse(yaml.contains("sei:"))
         XCTAssertFalse(yaml.contains("video:"))

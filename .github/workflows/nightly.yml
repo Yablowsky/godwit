@@ -34,16 +34,27 @@ jobs:
   build:
     needs: check-changes
     if: needs.check-changes.outputs.should_build == 'true'
-    runs-on: macos-latest
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clone olcrtc
-        run: git clone --depth 1 https://github.com/openlibrecommunity/olcrtc olcrtc
+      - name: Read pinned core revision
+        id: versions
+        run: |
+          source apple/build-versions.env
+          echo "olcrtc=$OLCRTC_REVISION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: openlibrecommunity/olcrtc
+          ref: ${{ steps.versions.outputs.olcrtc }}
+          path: olcrtc
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version-file: olcrtc/go.mod
           cache-dependency-path: olcrtc/go.sum
 
       - name: Accept Xcode license
@@ -57,11 +68,6 @@ jobs:
           ./apple/Scripts/build-macos-app.sh --olcrtc-root "$OLCRTC_REPO_ROOT"
           cd apple/.build
           zip -qry Godwit-macOS-unsigned.zip Godwit.app
-
-      - name: Install gomobile
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          gomobile init
 
       - name: Build iOS unsigned IPA
         env:

@@ -14,7 +14,7 @@ public enum PacketTunnelConfigurationError: LocalizedError, Equatable {
     }
 }
 
-public struct PacketTunnelConfiguration: Equatable {
+public struct PacketTunnelConfiguration: Equatable, Sendable {
     private enum Key {
         static let carrierName = "carrierName"
         static let transportName = "transportName"

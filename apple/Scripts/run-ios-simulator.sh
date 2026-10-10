@@ -39,11 +39,6 @@ MSG
   exit 1
 fi
 
-if ! command -v gomobile >/dev/null 2>&1; then
-  go install golang.org/x/mobile/cmd/gomobile@latest
-fi
-
-gomobile init
 "$APPLE_DIR/Scripts/build-xcframework.sh"
 
 if command -v xcodegen >/dev/null 2>&1; then

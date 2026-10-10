@@ -121,19 +121,22 @@ private struct StubProfilePinger: ProfilePinging {
 }
 
 private final class SubscriptionURLProtocol: URLProtocol {
-    private static let lock = NSLock()
-    private static var bodies: [URL: String] = [:]
+    private final class Responses: @unchecked Sendable {
+        let lock = NSLock()
+        var bodies: [URL: String] = [:]
+    }
+    private static let responses = Responses()
 
     static func setBody(_ body: String, for url: URL) {
-        lock.lock()
-        bodies[url] = body
-        lock.unlock()
+        responses.lock.lock()
+        responses.bodies[url] = body
+        responses.lock.unlock()
     }
 
     static func reset() {
-        lock.lock()
-        bodies.removeAll()
-        lock.unlock()
+        responses.lock.lock()
+        responses.bodies.removeAll()
+        responses.lock.unlock()
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -168,8 +171,8 @@ private final class SubscriptionURLProtocol: URLProtocol {
     override func stopLoading() {}
 
     private static func body(for url: URL) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return bodies[url]
+        responses.lock.lock()
+        defer { responses.lock.unlock() }
+        return responses.bodies[url]
     }
 }
