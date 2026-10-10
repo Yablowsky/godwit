@@ -3,11 +3,11 @@ import XCTest
 @testable import OlcRTCClientKit
 
 final class ConnectionProfileTests: XCTestCase {
-    func testNewProfilesUseLegacyVP8Defaults() {
+    func testNewProfilesUseLegacyTransportDefaults() {
         let profile = ConnectionProfile.empty
         XCTAssertEqual(profile.vp8FPS, 60)
-        XCTAssertEqual(profile.seiFPS, 30)
-        XCTAssertEqual(profile.videoFPS, 30)
+        XCTAssertEqual(profile.seiFPS, 60)
+        XCTAssertEqual(profile.videoFPS, 60)
     }
 
     func testLegacyProfilesKeepTheirOldFPSDefaults() throws {

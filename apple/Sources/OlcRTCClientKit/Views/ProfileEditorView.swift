@@ -19,6 +19,7 @@ private let profileEditorRowSpacing: CGFloat = 12
 private let profileEditorSpacerMinLength: CGFloat = 16
 #endif
 private let videoCodecOptions = ["qrcode", "tile"]
+private let videoHardwareOptions = ["none", "nvenc"]
 private let videoQRRecoveryOptions = ["low", "medium", "high", "highest"]
 
 public struct ProfileEditorView: View {
@@ -160,6 +161,12 @@ public struct ProfileEditorView: View {
                         ConnectionNumberRow(title: "Ширина", value: $profile.videoWidth, range: 1...7_680)
                         ConnectionNumberRow(title: "Высота", value: $profile.videoHeight, range: 1...4_320)
                         ConnectionNumberRow(title: "FPS", value: $profile.videoFPS, range: 1...120, showsStepper: true)
+                        ConnectionTextRow(title: "Битрейт", text: $profile.videoBitrate, onCommit: onCommit)
+                        ConnectionPickerRow(
+                            title: "Ускорение",
+                            selection: $profile.videoHardwareAcceleration,
+                            options: videoHardwareOptions
+                        )
                         ConnectionPickerRow(
                             title: "QR коррекция",
                             selection: $profile.videoQRRecovery,
