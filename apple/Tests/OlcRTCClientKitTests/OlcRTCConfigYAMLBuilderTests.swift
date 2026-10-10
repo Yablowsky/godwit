@@ -2,11 +2,11 @@ import XCTest
 @testable import OlcRTCClientKit
 
 final class OlcRTCConfigYAMLBuilderTests: XCTestCase {
-    func testVideoConfigDoesNotEmitRemovedCoreOptions() {
+    func testVideoConfigKeepsLegacyCoreOptions() {
         let profile = ConnectionProfile(name: "Video", transport: .videochannel)
         let yaml = OlcRTCConfigYAMLBuilder(options: OlcRTCStartOptions(profile: profile), socksPort: profile.socksPort).yaml()
-        XCTAssertFalse(yaml.contains("bitrate:"))
-        XCTAssertFalse(yaml.contains("hw:"))
+        XCTAssertTrue(yaml.contains("bitrate:"))
+        XCTAssertTrue(yaml.contains("hw:"))
         XCTAssertTrue(yaml.contains("video:"))
     }
 
